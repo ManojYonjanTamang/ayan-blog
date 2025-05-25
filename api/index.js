@@ -10,6 +10,7 @@ const fs = require("fs");
 const Post = require("./models/Post");
 const cors = require("cors");
 app.use(cors({ credentials: true, origin: "http://localhost:3000" }));
+app.use('/uploads', express.static(__dirname + '/uploads'));
 
 const bcrypt = require("bcryptjs");
 const salt = bcrypt.genSaltSync(10);
@@ -44,21 +45,30 @@ app.post("/register", async (req, res) => {
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
 
-  const userDoc = await User.findOne({ username });
-  const passwordOk = bcrypt.compareSync(password, userDoc.password);
-  if (passwordOk) {
-    jwt.sign({ username, id: userDoc._id }, secret, {}, (err, token) => {
-      if (err) {
-        res.status(400).json(err);
-      } else {
-        res.cookie("token", token).json({
-          username,
-          id: userDoc._id,
-        });
-      }
-    });
-  } else {
-    res.status(400).json("Invalid credentials");
+  try {
+    const userDoc = await User.findOne({ username });
+    if (!userDoc) {
+      res.status(400).json("User not found");
+      return;
+    }
+
+    const passwordOk = bcrypt.compareSync(password, userDoc.password);
+    if (passwordOk) {
+      jwt.sign({ username, id: userDoc._id }, secret, {}, (err, token) => {
+        if (err) {
+          res.status(400).json(err);
+        } else {
+          res.cookie("token", token).json({
+            username,
+            id: userDoc._id,
+          });
+        }
+      });
+    } else {
+      res.status(400).json("Invalid credentials");
+    }
+  } catch (err) {
+    res.status(400).json(err);
   }
 });
 
@@ -79,39 +89,64 @@ app.post("/logout", (req, res) => {
 
 
 app.post("/post", uploadMiddleware.single("file"), async (req, res) => {
-  const {originalname,path} = req.file;
-  const parts = originalname.split(".");
-  const extension = parts[parts.length - 1];
-  const newPath = path + "." + extension;
-  fs.renameSync(path, newPath);
-
+  let newPath = null;
+  if (req.file) {
+    const {originalname,path} = req.file;
+    const parts = originalname.split(".");
+    const extension = parts[parts.length - 1];
+    newPath = path + "." + extension;
+    fs.renameSync(path, newPath);
+  }
 
   const { token } = req.cookies;
   jwt.verify(token, secret, {}, async (err, decoded) => {
     if (err) {
       res.status(400).json(err);
+      return;
     } 
 
     const {title, summary, content} = req.body;
-    const postDoc = await Post.create({
-      title,
-      summary,
-      content,
-      cover: newPath,
-      author: decoded.id,
-    })
-    res.json(postDoc)
+    try {
+      const postDoc = await Post.create({
+        title,
+        summary,
+        content,
+        cover: newPath,
+        author: decoded.id,
+      });
+      const populatedPost = await Post.findById(postDoc._id).populate('author', ['username']);
+      res.json(populatedPost);
+    } catch (err) {
+      res.status(400).json(err);
+    }
   });
-
-  
 });
 
-
 app.get("/post", async (req, res) => {
-  const posts = await Post.find()
-  res.json(posts)
-})
+  try {
+    const posts = await Post.find()
+      .populate('author', ['username'])
+      .sort({createdAt: -1})
+      .limit(20);
+    res.json(posts);
+  } catch (err) {
+    res.status(400).json(err);
+  }
+});
 
+app.get('/post/:id', async(req, res) => {
+  const {id} = req.params;
+  try {
+    const postDoc = await Post.findById(id).populate('author', ['username']);
+    if (!postDoc) {
+      res.status(404).json('Post not found');
+      return;
+    }
+    res.json(postDoc);
+  } catch (err) {
+    res.status(400).json(err);
+  }
+});
 
 app.listen(4000, () => {
   console.log("Server is running on http://localhost:4000");
