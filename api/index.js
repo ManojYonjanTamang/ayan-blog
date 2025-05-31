@@ -27,6 +27,8 @@ mongoose.connect(
 });
 
 const User = require("./models/User");
+const { spawn } = require('child_process');
+const path = require('path');
 
 app.post("/register", async (req, res) => {
   const { username, password } = req.body;
@@ -46,26 +48,26 @@ app.post("/login", async (req, res) => {
   const { username, password } = req.body;
 
   try {
-    const userDoc = await User.findOne({ username });
+  const userDoc = await User.findOne({ username });
     if (!userDoc) {
       res.status(400).json("User not found");
       return;
     }
 
-    const passwordOk = bcrypt.compareSync(password, userDoc.password);
-    if (passwordOk) {
-      jwt.sign({ username, id: userDoc._id }, secret, {}, (err, token) => {
-        if (err) {
-          res.status(400).json(err);
-        } else {
-          res.cookie("token", token).json({
-            username,
-            id: userDoc._id,
-          });
-        }
-      });
-    } else {
-      res.status(400).json("Invalid credentials");
+  const passwordOk = bcrypt.compareSync(password, userDoc.password);
+  if (passwordOk) {
+    jwt.sign({ username, id: userDoc._id }, secret, {}, (err, token) => {
+      if (err) {
+        res.status(400).json(err);
+      } else {
+        res.cookie("token", token).json({
+          username,
+          id: userDoc._id,
+        });
+      }
+    });
+  } else {
+    res.status(400).json("Invalid credentials");
     }
   } catch (err) {
     res.status(400).json(err);
@@ -91,11 +93,11 @@ app.post("/logout", (req, res) => {
 app.post("/post", uploadMiddleware.single("file"), async (req, res) => {
   let newPath = null;
   if (req.file) {
-    const {originalname,path} = req.file;
-    const parts = originalname.split(".");
-    const extension = parts[parts.length - 1];
+  const {originalname,path} = req.file;
+  const parts = originalname.split(".");
+  const extension = parts[parts.length - 1];
     newPath = path + "." + extension;
-    fs.renameSync(path, newPath);
+  fs.renameSync(path, newPath);
   }
 
   const { token } = req.cookies;
@@ -107,12 +109,12 @@ app.post("/post", uploadMiddleware.single("file"), async (req, res) => {
 
     const {title, summary, content} = req.body;
     try {
-      const postDoc = await Post.create({
-        title,
-        summary,
-        content,
-        cover: newPath,
-        author: decoded.id,
+    const postDoc = await Post.create({
+      title,
+      summary,
+      content,
+      cover: newPath,
+      author: decoded.id,
       });
       const populatedPost = await Post.findById(postDoc._id).populate('author', ['username']);
       res.json(populatedPost);
@@ -145,6 +147,63 @@ app.get('/post/:id', async(req, res) => {
     res.json(postDoc);
   } catch (err) {
     res.status(400).json(err);
+  }
+});
+
+app.post("/transcribe", async (req, res) => {
+  const { url, improve } = req.body;
+  if (!url) {
+    res.status(400).json("URL is required");
+    return;
+  }
+
+  try {
+    const pythonProcess = spawn('python3', [
+      path.join(__dirname, 'video_to_text', 'video_to_text.py'),
+      url,
+      improve ? '--improve' : ''
+    ]);
+
+    let transcription = '';
+    let error = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+      transcription += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      error += data.toString();
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        res.status(500).json({ error: error || 'Transcription failed' });
+        return;
+      }
+      
+      console.log("Python script output:", transcription); // Debug log
+      
+      // Extract the transcription and title from the output
+      const transcriptMatch = transcription.match(/Original transcription:\n([\s\S]*?)(?:\nImproved transcription:|$)/);
+      const improvedMatch = transcription.match(/Improved transcription:\n([\s\S]*?)(?:\n===VIDEO_TITLE_START===|$)/);
+      
+      // Extract title using the new markers
+      const titleMatch = transcription.match(/===VIDEO_TITLE_START===\n([\s\S]*?)\n===VIDEO_TITLE_END===/);
+      
+      console.log("Title match:", titleMatch); // Debug log
+      
+      const result = {
+        title: titleMatch ? titleMatch[1].trim() : 'Transcribed Video',
+        original: transcriptMatch ? transcriptMatch[1].trim() : '',
+        improved: improvedMatch ? improvedMatch[1].trim() : null
+      };
+      
+      console.log("Sending response:", result); // Debug log
+      res.json(result);
+    });
+  } catch (err) {
+    console.error("API error:", err); // Debug log
+    res.status(500).json({ error: err.message });
   }
 });
 

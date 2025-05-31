@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useContext } from "react";
 import { UserContext } from "./UserContext";
+import "./Header.css";
 
 export default function Header() {
   const { userInfo, setUserInfo } = useContext(UserContext);
@@ -24,8 +25,11 @@ export default function Header() {
       method: "POST",
     }).then(() => {
       setUserInfo(null);
+      // Trigger storage event for cross-tab logout
+      localStorage.setItem('logout', Date.now().toString());
     });
   }
+
   return (
     <header>
       <Link to="/" className="logo">
@@ -36,7 +40,7 @@ export default function Header() {
         {username ? (
           <>
             <Link to="/create">Create New Post</Link>
-            <a onClick={logout}>Logout</a>
+            <a onClick={logout} className="logout-btn">Logout</a>
           </>
         ) : (
           <>

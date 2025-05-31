@@ -1,0 +1,49 @@
+header {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+  margin-bottom: 50px;
+  align-items: center;
+}
+
+header a {
+  text-decoration: none;
+  color: inherit;
+}
+
+header a.logo {
+  font-weight: bold;
+  font-size: 1.5rem;
+}
+
+header nav {
+  display: flex;
+  gap: 15px;
+}
+
+header nav a {
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+
+header nav a:hover {
+  color: #007bff;
+}
+
+/* Logout button specific styles */
+header nav a[onClick] {
+  cursor: pointer;
+  position: relative;
+  padding: 5px 10px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+header nav a[onClick]:hover {
+  background-color: #f8f9fa;
+  color: #dc3545;
+}
+
+header nav a[onClick]:active {
+  transform: scale(0.98);
+} 
