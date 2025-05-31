@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require("express");
 const app = express();
 app.use(express.json());
@@ -18,13 +19,13 @@ const secret = "fdfwerdvfdg3423efertr34trfdfr2e";
 
 const mongoose = require("mongoose");
 console.log("Attempting to connect to MongoDB...");
-mongoose.connect(
-  "mongodb+srv://blog:0qp5wExVE2ZEwYi6@cluster0.8ovkv.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-).then(() => {
-  console.log("Successfully connected to MongoDB!");
-}).catch((err) => {
-  console.error("MongoDB connection error:", err);
-});
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log("Successfully connected to MongoDB!");
+  })
+  .catch((err) => {
+    console.error("MongoDB connection error:", err);
+  });
 
 const User = require("./models/User");
 const { spawn } = require('child_process');
@@ -132,7 +133,8 @@ app.get("/post", async (req, res) => {
       .limit(20);
     res.json(posts);
   } catch (err) {
-    res.status(400).json(err);
+    console.error('Error fetching posts:', err);
+    res.status(500).json({ error: 'Failed to fetch posts' });
   }
 });
 

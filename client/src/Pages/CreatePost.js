@@ -202,17 +202,26 @@ export default function CreatePost() {
     data.set("file", files[0]);
     data.set("content", content);
 
-    const response = await fetch("http://localhost:4000/post", {
-      method: "POST",
-      body: data,
-      credentials: "include",
-    });
+    try {
+      const response = await fetch("http://localhost:4000/post", {
+        method: "POST",
+        body: data,
+        credentials: "include",
+      });
 
-    if (response.ok) {
-      setRedirect(true);
-    } else if (response.status === 401) {
-      setIsAuthenticated(false);
-      setRedirect(true);
+      if (response.ok) {
+        // Redirect to home page instead of login
+        window.location.href = '/';
+      } else if (response.status === 401) {
+        setIsAuthenticated(false);
+        setRedirect(true);
+      } else {
+        const error = await response.json();
+        setValidationErrors({ submit: error.message || 'Failed to create post' });
+      }
+    } catch (err) {
+      console.error('Error creating post:', err);
+      setValidationErrors({ submit: 'Failed to create post. Please try again.' });
     }
   }
 
