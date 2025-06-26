@@ -32,7 +32,7 @@ def download_audio(url: str) -> tuple:
         tuple: (Path to the downloaded audio file, Video title)
         
     Raises:
-        SystemExit: If download fails
+        Exception: If download fails
     """
     try:
         # Create YouTube object
@@ -57,8 +57,7 @@ def download_audio(url: str) -> tuple:
         
         return filename, title
     except Exception as e:
-        print(f"Error downloading video: {str(e)}")
-        sys.exit(1)
+        raise Exception(f"Error downloading video: {str(e)}")
 
 def convert_to_wav(webm_file: str) -> str:
     """
@@ -71,7 +70,7 @@ def convert_to_wav(webm_file: str) -> str:
         str: Path to the converted WAV file
         
     Raises:
-        SystemExit: If conversion fails
+        Exception: If conversion fails
     """
     try:
         print("\nConverting audio to WAV format...")
@@ -89,22 +88,9 @@ def convert_to_wav(webm_file: str) -> str:
         print("Conversion completed!")
         return wav_file
     except Exception as e:
-        print(f"Error converting audio: {str(e)}")
-        sys.exit(1)
+        raise Exception(f"Error converting audio: {str(e)}")
 
 def transcribe_audio(wav_file: str) -> str:
-    """
-    Transcribe audio using Vosk speech recognition.
-    
-    Args:
-        wav_file (str): Path to the WAV audio file
-        
-    Returns:
-        str: Transcribed text
-        
-    Raises:
-        Exception: If transcription fails
-    """
     try:
         print("\nTranscribing audio...")
         
@@ -154,8 +140,7 @@ def transcribe_audio(wav_file: str) -> str:
         return text.strip()
         
     except Exception as e:
-        print(f"Error transcribing audio: {str(e)}")
-        return f"Error during transcription: {str(e)}"
+        raise Exception(f"Error transcribing audio: {str(e)}")
 
 def improve_transcript(text):
     """Summarize the transcript by processing each chunk and combining summaries."""
@@ -190,51 +175,46 @@ def main() -> None:
     parser.add_argument('url', help='YouTube video URL')
     parser.add_argument('--improve', action='store_true', help='Improve the transcription using AI')
     args = parser.parse_args()
+
+    webm_file = None
+    wav_file = None
     
-    # Download audio
-    webm_file, video_title = download_audio(args.url)
-    
-    # Convert to WAV format
-    wav_file = convert_to_wav(webm_file)
-    
-    # Transcribe audio
-    transcription = transcribe_audio(wav_file)
-    
-    # Save original transcription to file
-    output_filename = webm_file.replace('.webm', '_transcript.txt')
-    with open(output_filename, 'w', encoding='utf-8') as f:
-        f.write(transcription)
-    
-    print(f"\nOriginal transcription saved to: {output_filename}")
-    print("\nOriginal transcription:")
-    print(transcription)
-    
-    # Clean up temporary files
+    # Suppress informational print statements by redirecting stdout to stderr
+    original_stdout = sys.stdout
+    sys.stdout = sys.stderr
+
     try:
-        os.remove(webm_file)
-        os.remove(wav_file)
-        print(f"\nCleaned up: Removed temporary files")
-    except:
-        print(f"\nNote: Could not remove temporary files")
-    
-    # Improve transcription if requested
-    if args.improve:
-        print(f"\nProcessing file: {output_filename}")
-        print("\nOriginal transcription:")
-        print(transcription)
-        improved_text = improve_transcript(transcription)
-        improved_filename = output_filename.replace('_transcript.txt', '_transcript_improved.txt')
-        with open(improved_filename, 'w', encoding='utf-8') as f:
-            f.write(improved_text)
-        print(f"\nImproved transcription saved to: {improved_filename}")
-        print("\nImproved transcription:")
-        print(improved_text)
-    
-    # Print video title in a format that can be easily parsed by the API
-    # Make sure to print it at the very end with a clear marker
-    print("\n===VIDEO_TITLE_START===")
-    print(video_title.strip())
-    print("===VIDEO_TITLE_END===")
+        webm_file, video_title = download_audio(args.url)
+        wav_file = convert_to_wav(webm_file)
+        transcription = transcribe_audio(wav_file)
+        
+        improved_text = None
+        if args.improve:
+            improved_text = improve_transcript(transcription)
+
+        # Restore stdout and print final JSON
+        sys.stdout = original_stdout
+        
+        result = {
+            "title": video_title.strip(),
+            "original": transcription.strip(),
+            "improved": improved_text.strip() if improved_text else None
+        }
+        print(json.dumps(result))
+
+    except Exception as e:
+        # Restore stdout and print error JSON to stderr
+        sys.stdout = original_stdout
+        print(json.dumps({"error": str(e)}), file=sys.stderr)
+        sys.exit(1)
+    finally:
+        # Restore stdout just in case
+        sys.stdout = original_stdout
+        # Clean up temporary files
+        if webm_file and os.path.exists(webm_file):
+            os.remove(webm_file)
+        if wav_file and os.path.exists(wav_file):
+            os.remove(wav_file)
 
 if __name__ == "__main__":
     main()

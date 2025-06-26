@@ -1,12 +1,19 @@
 require('dotenv').config();
 const express = require("express");
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
 app.use(cookieParser());
 const multer = require("multer");
-const uploadMiddleware = multer({ dest: "uploads/" });
+const uploadMiddleware = multer({ 
+  dest: "uploads/",
+  limits: {
+    fieldSize: 10 * 1024 * 1024, // 10MB for text fields
+    fileSize: 10 * 1024 * 1024,  // 10MB for files
+  }
+});
 const fs = require("fs");
 const Post = require("./models/Post");
 const cors = require("cors");
@@ -30,6 +37,8 @@ mongoose.connect(process.env.MONGODB_URI)
 const User = require("./models/User");
 const { spawn } = require('child_process');
 const path = require('path');
+const summarizeRoute = require('./routes/summarize');
+const generateImageRoute = require('./routes/generateImage');
 
 app.post("/register", async (req, res) => {
   const { username, password } = req.body;
@@ -160,17 +169,20 @@ app.post("/transcribe", async (req, res) => {
   }
 
   try {
-    const pythonProcess = spawn('python3', [
-      path.join(__dirname, 'video_to_text', 'video_to_text.py'),
-      url,
-      improve ? '--improve' : ''
-    ]);
+    const pythonExecutable = path.join(__dirname, 'video_to_text', 'venv', 'bin', 'python3.10');
+    const scriptPath = path.join(__dirname, 'video_to_text', 'video_to_text.py');
+    const args = [scriptPath, url];
+    if (improve) {
+      args.push('--improve');
+    }
 
-    let transcription = '';
+    const pythonProcess = spawn(pythonExecutable, args);
+
+    let output = '';
     let error = '';
 
     pythonProcess.stdout.on('data', (data) => {
-      transcription += data.toString();
+      output += data.toString();
     });
 
     pythonProcess.stderr.on('data', (data) => {
@@ -178,36 +190,35 @@ app.post("/transcribe", async (req, res) => {
     });
 
     pythonProcess.on('close', (code) => {
+      console.log(`Python script exited with code ${code}`);
+      console.log('Stderr:', error);
+      console.log('Stdout:', output);
+      
       if (code !== 0) {
-        res.status(500).json({ error: error || 'Transcription failed' });
+        try {
+          const errorJson = JSON.parse(error);
+          res.status(500).json({ error: errorJson.error || 'Transcription failed' });
+        } catch (e) {
+          res.status(500).json({ error: error || 'Transcription failed with non-JSON error' });
+        }
         return;
       }
       
-      console.log("Python script output:", transcription); // Debug log
-      
-      // Extract the transcription and title from the output
-      const transcriptMatch = transcription.match(/Original transcription:\n([\s\S]*?)(?:\nImproved transcription:|$)/);
-      const improvedMatch = transcription.match(/Improved transcription:\n([\s\S]*?)(?:\n===VIDEO_TITLE_START===|$)/);
-      
-      // Extract title using the new markers
-      const titleMatch = transcription.match(/===VIDEO_TITLE_START===\n([\s\S]*?)\n===VIDEO_TITLE_END===/);
-      
-      console.log("Title match:", titleMatch); // Debug log
-      
-      const result = {
-        title: titleMatch ? titleMatch[1].trim() : 'Transcribed Video',
-        original: transcriptMatch ? transcriptMatch[1].trim() : '',
-        improved: improvedMatch ? improvedMatch[1].trim() : null
-      };
-      
-      console.log("Sending response:", result); // Debug log
-      res.json(result);
+      try {
+        const result = JSON.parse(output);
+        res.json(result);
+      } catch (e) {
+        res.status(500).json({ error: 'Failed to parse transcription output.' });
+      }
     });
   } catch (err) {
-    console.error("API error:", err); // Debug log
+    console.error("API error:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
+app.use('/summarize', summarizeRoute);
+app.use('/generate-image', generateImageRoute);
 
 app.listen(4000, () => {
   console.log("Server is running on http://localhost:4000");

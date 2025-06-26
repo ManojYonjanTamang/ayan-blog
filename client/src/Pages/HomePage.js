@@ -1,42 +1,48 @@
 import React, { useEffect, useState } from "react";
-import Post from "../Post";
+import { Link } from "react-router-dom";
 
 export default function HomePage() {
   const [posts, setPosts] = useState([]);
-  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:4000/post", {
-      credentials: "include"
-    })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('Failed to fetch posts');
-      }
-      return response.json();
-    })
-    .then(posts => {
-      setPosts(posts);
-      setError(null);
-    })
-    .catch(err => {
-      console.error('Error fetching posts:', err);
-      setError('Failed to load posts. Please try again later.');
-    });
+    fetch("http://localhost:4000/post")
+      .then((response) => {
+        response.json().then((postsInfo) => {
+          setPosts(postsInfo);
+          setLoading(false);
+        });
+      })
+      .catch((err) => {
+        setLoading(false);
+      });
   }, []);
 
-  if (error) {
-    return <div className="error">{error}</div>;
+  if (loading) {
+    return <div className="loading">Loading...</div>;
   }
 
   return (
-    <>
-      {posts.length > 0 && posts.map(post => (
-        <Post key={post._id} {...post} />
+    <div className="home-page">
+      {posts.length > 0 && posts.map((post) => (
+        <div key={post._id} className="post">
+          <div className="image">
+            <Link to={`/post/${post._id}`}>
+              <img src={`http://localhost:4000/${post.cover}`} alt="" />
+            </Link>
+          </div>
+          <div className="texts">
+            <Link to={`/post/${post._id}`}>
+              <h2>{post.title}</h2>
+            </Link>
+            <p className="info">
+              <a className="author">{post.author.username}</a>
+              <time>{new Date(post.createdAt).toLocaleDateString()}</time>
+            </p>
+            <p className="summary">{post.summary}</p>
+          </div>
+        </div>
       ))}
-      {posts.length === 0 && !error && (
-        <div className="no-posts">No posts yet. Be the first to create one!</div>
-      )}
-    </>
+    </div>
   );
 }
