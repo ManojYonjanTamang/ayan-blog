@@ -4,3 +4,4 @@ api/video_to_text/venv/
 __pycache__/
 node_modules/
 api/.env
+.env
