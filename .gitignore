@@ -1,0 +1,6 @@
+venv/
+api/video_to_text/venv/
+*.pyc
+__pycache__/
+node_modules/
+api/.env
