@@ -220,6 +220,4 @@ app.post("/transcribe", async (req, res) => {
 app.use('/summarize', summarizeRoute);
 app.use('/generate-image', generateImageRoute);
 
-app.listen(4000, () => {
-  console.log("Server is running on http://localhost:4000");
-});
+module.exports = app;
